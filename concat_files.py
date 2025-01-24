@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
+
 import os
 import sys
 import argparse
 from pathlib import Path
+from typing import Dict, List
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
@@ -43,111 +45,145 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def should_include_file(file_path, include_exts, exclude_exts):
+def should_include_file(file_path: Path, include_exts, exclude_exts) -> bool:
     """
     Decide if a file should be included based on the provided include/exclude lists.
 
-    - `file_path`: Full path to the file.
-    - `include_exts`: A set of extensions to include. If non-empty, only these are included.
-    - `exclude_exts`: A set of extensions to exclude.
+    - file_path: Path object pointing to a file.
+    - include_exts: A set of extensions to include. If non-empty, only these are included.
+    - exclude_exts: A set of extensions to exclude.
 
     Returns True if the file should be included, False otherwise.
     """
-    ext = Path(file_path).suffix.lower().lstrip(".")
-
-    # If `include_exts` is non-empty, the file extension must appear in that set.
+    ext = file_path.suffix.lower().lstrip(".")
+    # If `include_exts` is non-empty, only those extensions are allowed.
     if include_exts and ext not in include_exts:
         return False
-
     # If the file extension is in `exclude_exts`, skip it.
     if exclude_exts and ext in exclude_exts:
         return False
-
     return True
 
 
-def gather_files(paths, recursive=False, include_exts=None, exclude_exts=None):
+def gather_files_for_path(
+    path: Path, 
+    recursive: bool, 
+    include_exts, 
+    exclude_exts
+) -> List[Path]:
     """
-    Given a list of paths (files or directories), return a list of files found.
-    If 'recursive' is False, only list immediate files in directories.
-    The `include_exts` and `exclude_exts` sets specify which extensions to include/exclude.
+    Gather a list of files under a single top-level path (file or directory),
+    respecting the recursive flag and include/exclude filters.
+    Returns a list of absolute Paths.
     """
-    all_files = []
+    gathered = []
 
+    if not path.exists():
+        print(f"Warning: {path} does not exist. Skipping.", file=sys.stderr)
+        return gathered
+
+    # If it's a single file, just check if it passes the filters
+    if path.is_file():
+        if should_include_file(path, include_exts, exclude_exts):
+            gathered.append(path.resolve())
+        return gathered
+
+    # If it's a directory:
+    if recursive:
+        for root, dirs, files in os.walk(path):
+            for f in files:
+                full_path = Path(root) / f
+                if should_include_file(full_path, include_exts, exclude_exts):
+                    gathered.append(full_path.resolve())
+    else:
+        for f in path.iterdir():
+            if f.is_file():
+                if should_include_file(f, include_exts, exclude_exts):
+                    gathered.append(f.resolve())
+
+    return gathered
+
+
+def gather_all_files(
+    paths: List[str],
+    recursive: bool,
+    include_exts,
+    exclude_exts
+) -> Dict[Path, List[Path]]:
+    """
+    For each top-level path provided by the user, gather all matching files
+    (absolute Paths) and store them in a dictionary keyed by the top-level Path (resolved).
+
+    Example return structure:
+    {
+      Path('/abs/path/to/dirA'): [Path('/abs/path/to/dirA/file1.txt'), ...],
+      Path('/abs/path/to/some_file.py'): [Path('/abs/path/to/some_file.py')]
+    }
+    """
+    results = {}
     for p in paths:
-        path_obj = Path(p).resolve()
-
-        if not path_obj.exists():
-            print(f"Warning: {path_obj} does not exist. Skipping.", file=sys.stderr)
-            continue
-
-        if path_obj.is_file():
-            if should_include_file(str(path_obj), include_exts, exclude_exts):
-                all_files.append(str(path_obj))
-        else:
-            if recursive:
-                for root, dirs, files in os.walk(path_obj):
-                    for f in files:
-                        file_path = str(Path(root) / f)
-                        if should_include_file(file_path, include_exts, exclude_exts):
-                            all_files.append(file_path)
-            else:
-                for f in path_obj.iterdir():
-                    if f.is_file():
-                        file_path = str(f.resolve())
-                        if should_include_file(file_path, include_exts, exclude_exts):
-                            all_files.append(file_path)
-
-    return sorted(all_files)
+        top_path = Path(p).resolve()
+        files = gather_files_for_path(top_path, recursive, include_exts, exclude_exts)
+        results[top_path] = sorted(files, key=lambda x: str(x))
+    return results
 
 
-def build_directory_tree(file_paths):
+def build_directory_structure_for_files(
+    top_path: Path, 
+    files: List[Path]
+) -> List[str]:
     """
-    Build a nested dictionary representing the directory structure
-    for only the files that will be concatenated. We then return
-    this dictionary so we can print a tree of those files.
-    """
-    root = {}
+    Given a single top-level path and a list of *absolute* file paths under it,
+    build a mini "tree" (list of lines) showing their structure relative to top_path.
 
-    for f in file_paths:
-        parts = Path(f).parts
-        # Navigate down the dict, creating subdicts as needed
-        current = root
+    If top_path is a file, we just show that file name (if it was included).
+    If top_path is a directory, we show a tree structure from top_path down.
+    """
+    lines = []
+
+    if top_path.is_file():
+        # top_path is already in `files` if it was included
+        # Just show the file name, no sub-tree
+        if len(files) == 1:  # The top_path itself
+            lines.append(str(top_path.name))
+        elif len(files) > 1:
+            # Very unusual edge case: user passed a file path that somehow matched multiple?
+            # Realistically that won't happen, but let's handle gracefully
+            lines.extend(str(f.name) for f in files)
+        return lines
+
+    # If it's a directory, build a structure
+    # Approach: a nested dict from the relative paths
+    tree = {}
+    for f in files:
+        relative = f.relative_to(top_path)  # path from top_path
+        parts = relative.parts
+        current = tree
         for part in parts[:-1]:
             current = current.setdefault(part, {})
-        # Add the file itself to a special key "_files"
         current.setdefault("_files", []).append(parts[-1])
 
-    return root
+    lines.append(f"{top_path.name}/")  # Start with the directory name
+    _print_tree(tree, indent="  ", lines=lines)
+    return lines
 
 
-def print_directory_tree(tree, indent="", lines=None):
+def _print_tree(node: dict, indent: str, lines: List[str]):
     """
-    Recursively print the directory structure from a nested dictionary
-    (as produced by build_directory_tree). 
+    Recursively print the directory structure from a nested dictionary.
+    A node's subdirs are all keys except "_files".
     """
-    if lines is None:
-        lines = []
-
-    # Keys that are not "_files" are subdirectories
-    subdirs = [k for k in tree.keys() if k != "_files"]
-    # Sort them for a consistent ordering
+    subdirs = [k for k in node.keys() if k != "_files"]
     subdirs.sort()
-
-    # Print subdirectories first
     for d in subdirs:
         lines.append(f"{indent}{d}/")
-        print_directory_tree(tree[d], indent + "  ", lines)
+        _print_tree(node[d], indent + "  ", lines)
 
-    # Now handle files
-    if "_files" in tree:
-        files = tree["_files"]
-        # Sort them for a consistent ordering
+    if "_files" in node:
+        files = node["_files"]
         files.sort()
         for f in files:
-            lines.append(f"{indent}  {f}")
-
-    return lines
+            lines.append(f"{indent}{f}")
 
 
 def main():
@@ -157,19 +193,22 @@ def main():
     include_exts = set(e.lower().lstrip(".") for e in args.include) if args.include else None
     exclude_exts = set(e.lower().lstrip(".") for e in args.exclude) if args.exclude else None
 
-    # 1. Gather files from the provided paths
-    file_paths = gather_files(
+    # 1. Gather files per top-level path
+    file_dict = gather_all_files(
         args.paths,
         recursive=args.recursive,
         include_exts=include_exts,
         exclude_exts=exclude_exts
     )
 
-    # 2. Build a nested structure *only* for the files that are actually going to be concatenated
-    directory_tree = build_directory_tree(file_paths)
-    tree_lines = print_directory_tree(directory_tree)
+    # Create one combined list of all files for concatenation
+    all_files = []
+    for file_list in file_dict.values():
+        all_files.extend(file_list)
+    # Sort them by path just for consistency
+    all_files = sorted(all_files, key=lambda x: str(x))
 
-    # Open output destination (file or stdout)
+    # 2. Open output destination (file or stdout)
     if args.output:
         out_f = open(args.output, "w", encoding="utf-8", errors="replace")
     else:
@@ -178,15 +217,26 @@ def main():
     try:
         # 3. Write the header
         out_f.write("===== Directory Structure Header =====\n")
-        if file_paths:
-            for line in tree_lines:
+        something_printed = False
+
+        for top_path, files in file_dict.items():
+            # Only print a sub-tree if we actually have files
+            if not files:
+                continue
+
+            something_printed = True
+            # Print a small label for each top-level path
+            # or skip if it's clearly a single item?
+            lines = build_directory_structure_for_files(top_path, files)
+            for line in lines:
                 out_f.write(line + "\n")
-        else:
+        if not something_printed:
             out_f.write("(No files matched the filters.)\n")
+
         out_f.write("======================================\n\n")
 
         # 4. Concatenate each file
-        for fpath in file_paths:
+        for fpath in all_files:
             out_f.write(f"===== START OF FILE: {fpath} =====\n")
             try:
                 with open(fpath, "r", encoding="utf-8", errors="replace") as in_f:
@@ -200,7 +250,7 @@ def main():
         if out_f is not sys.stdout:
             out_f.close()
 
-    # If we were writing to a file, let the user know
+    # If we wrote to a file, let the user know
     if args.output:
         print(f"All files concatenated into '{args.output}'.")
     else:
