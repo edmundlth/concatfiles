@@ -1,0 +1,119 @@
+## Overview
+
+`concat_files.py` is a simple command-line tool for concatenating multiple files into one. It can walk through directories (optionally recursively), filter which file types should be included or excluded, and prints a directory structure listing at the top of the output that reflects **only** the files actually concatenated.
+
+## Features
+
+- **Directory structure header**: Lists only the files that will be concatenated, in a simple tree-like view.  
+- **File delimiters**: Each file’s content is bounded by lines indicating the start and end of that file.  
+- **Recursive traversal**: Use the `-r` (or `--recursive`) option to traverse directories deeply.  
+- **Flexible extension filtering**: `--include` and `--exclude` options let you easily decide which file types to process.  
+- **STDOUT by default**: By default, the concatenated result is written to standard output (great for using shell redirection). Use `-o` to write to a file.
+
+## Requirements
+
+- **Python 3.6+**  
+- Works on macOS, Linux, or other Unix-like systems.
+
+## Installation
+
+1. **Download** or **clone** the script to your local machine.  
+2. Make it **executable**:
+   ```bash
+   chmod +x concat_files.py
+   ```
+3. (Optional) **Move** it into a directory on your `PATH` (e.g., `/usr/local/bin` or `~/bin`) so you can run it from anywhere by name:
+   ```bash
+   mv concat_files.py /usr/local/bin/concat_files
+   ```
+
+## Usage
+
+```bash
+./concat_files.py [OPTIONS] [PATHS...]
+```
+
+- **`PATHS`**: One or more file or directory paths. Mix and match freely.
+
+### Common Options
+
+- **`-r, --recursive`**  
+  Recursively traverse directories to gather files. By default, only the immediate files in each directory are processed.
+
+- **`-o, --output FILE`**  
+  Write the concatenated output to `FILE`. If not specified, the result is written to standard output (stdout).
+
+- **`--include EXT`**  
+  Include only files with the given extension(s). For example, `--include py --include txt` will limit processing to `.py` and `.txt` files.
+
+- **`--exclude EXT`**  
+  Exclude files that match the given extension(s). For example, `--exclude ipynb --exclude json` will skip `.ipynb` and `.json` files.
+
+> **Tip**: If you specify one or more `--include` extensions, only those extensions are allowed. If you also specify `--exclude`, those excluded extensions are filtered out from the included set.
+
+## Examples
+
+1. **Write everything to standard output, then redirect to a file**:
+   ```bash
+   ./concat_files.py file1.txt file2.txt > combined.txt
+   ```
+   This writes the concatenated output (with a directory tree header) to `stdout`, which is then redirected to `combined.txt`.
+
+2. **Recursively concatenate only `.py` files in a directory**:
+   ```bash
+   ./concat_files.py my_project -r --include py > python_files.txt
+   ```
+   Collects `.py` files from `my_project` (including subdirectories) and writes them to `python_files.txt`.
+
+3. **Concatenate all files in multiple directories, excluding `.json`**:
+   ```bash
+   ./concat_files.py dirA dirB --exclude json > everything_but_json.txt
+   ```
+
+4. **Write directly to an output file (no redirection needed)**:
+   ```bash
+   ./concat_files.py -o concatenated.txt dirC fileA.md
+   ```
+   Concatenates `fileA.md` and all top-level files in `dirC` into `concatenated.txt`.
+
+5. **Recursively gather `.txt` and `.md` files, exclude `.bak`**:
+   ```bash
+   ./concat_files.py docs -r --include txt --include md --exclude bak -o filtered_docs.txt
+   ```
+   Only `.txt` and `.md` files are collected, skipping anything ending with `.bak`.
+
+## Output Format
+
+The first part of the output is a **Directory Structure Header**, showing a minimal tree of the files being concatenated. For example:
+
+```
+===== Directory Structure Header =====
+my_project/
+  src/
+    script1.py
+    script2.py
+  script3.py
+======================================
+```
+
+Then, for each file:
+
+```
+===== START OF FILE: /full/path/to/script1.py =====
+[contents of script1.py]
+===== END OF FILE: /full/path/to/script1.py =====
+
+===== START OF FILE: /full/path/to/script2.py =====
+[contents of script2.py]
+===== END OF FILE: /full/path/to/script2.py =====
+...
+```
+
+If no files match the include/exclude filters, the script simply prints a message in the header indicating no files matched.
+
+---
+
+**That’s it!** This tool is a handy way to gather files into one place with clear boundaries and an overview of what was included.  
+
+## Acknowledgements
+Written with the use of OpenAI's O1 pro model.
