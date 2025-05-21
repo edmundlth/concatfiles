@@ -7,7 +7,8 @@
 - **Directory structure header**: Lists only the files that will be concatenated, in a simple tree-like view.  
 - **File delimiters**: Each file’s content is bounded by lines indicating the start and end of that file.  
 - **Recursive traversal**: Use the `-r` (or `--recursive`) option to traverse directories deeply.  
-- **Flexible extension filtering**: `--include` and `--exclude` options let you easily decide which file types to process.  
+- **Flexible extension filtering**: `--include` and `--exclude` options let you easily decide which file types to process.
+- **Duplicate removal**: The script automatically deduplicates files collected from the provided paths.
 - **STDOUT by default**: By default, the concatenated result is written to standard output (great for using shell redirection). Use `-o` to write to a file.
 
 ## Requirements
