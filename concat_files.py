@@ -205,8 +205,10 @@ def main():
     all_files = []
     for file_list in file_dict.values():
         all_files.extend(file_list)
-    # Sort them by path just for consistency
-    all_files = sorted(all_files, key=lambda x: str(x))
+
+    # Remove duplicates (same file may appear under multiple paths) and
+    # sort the result for consistent ordering
+    all_files = sorted(set(all_files), key=lambda x: str(x))
 
     # 2. Open output destination (file or stdout)
     if args.output:
