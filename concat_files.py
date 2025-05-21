@@ -201,6 +201,20 @@ def main():
         exclude_exts=exclude_exts
     )
 
+    # If the output path already exists inside one of the supplied directories,
+    # we don't want to include it in the concatenation. This can easily happen
+    # when running the tool multiple times with the output file located inside
+    # an input directory.
+    if args.output:
+        output_path = Path(args.output).resolve()
+        for top, files in list(file_dict.items()):
+            filtered = [f for f in files if f != output_path]
+            file_dict[top] = filtered
+            # If the top level path itself is the output file and was removed,
+            # drop the entire entry so it doesn't appear in the header.
+            if not filtered and top == output_path:
+                del file_dict[top]
+
     # Create one combined list of all files for concatenation
     all_files = []
     for file_list in file_dict.values():
